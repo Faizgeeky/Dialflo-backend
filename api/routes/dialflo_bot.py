@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from api.schema import UserQuery
-from api.models import OrderHistory, QueryTypeEnum
+from api.models import OrderHistory, QueryTypeEnum, Users
 from api.database import get_db
 from api.utils.query_ai import get_query_ai
 import uuid
@@ -12,25 +12,37 @@ router = APIRouter()
 
 
 
-def add_order_to_db(db, order_type, user_query, username, phone):
+def add_order_to_db(db: Session, order_type: QueryTypeEnum, user_query: str, username: str, phone: str):
     try:
-        new_order = OrderHistory()
-        new_order.order_id = str(uuid.uuid4().int)[:6]
-        new_order.query = user_query
-        new_order.query_type = order_type
-        if username is not None:
-            print("username", username)
-            new_order.customer_name = username
-        if phone is not None:
-            new_order.customer_phone = phone
+        # Check if user exist by phone
+        user = db.query(Users).filter_by(phone=phone).first()
+        
+        # NOTE - valodate phone and username before creating user
+        if not user and phone is not None :
+            user = Users(phone=phone)
+            if username:
+                user.username = username
+            db.add(user)
+            db.commit()
+            db.refresh(user) 
+        
+        # Create the new order and assign user_id
+        new_order = OrderHistory(
+            order_id=str(uuid.uuid4().int)[:6],  
+            query=user_query,
+            query_type=order_type
+        )
+        
+        if user:
+           new_order.user_id = user.id 
         
         db.add(new_order)
         db.commit()
         db.refresh(new_order)
         return True
-    
     except Exception as e:
         # logger
+        db.rollback()  
         print("Error while creating order", str(e))
         return False
     
@@ -40,7 +52,7 @@ def ai_support_agent(
         db: Session = Depends(get_db)
         ):
     """
-       API which accepts the order query and username optional
+       API which accepts the order query and username optional and return the Order status accordingly
     """
     # get the data
     user_query = request.query

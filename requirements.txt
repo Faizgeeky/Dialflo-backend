@@ -2,4 +2,7 @@ fastapi
 uvicorn
 psycopg2
 python-dotenv
-sqlalchemy
+SQLAlchemy==2.0.38
+httpx==0.28.1
+pytest==8.3.5
+python-dotenv==1.0.1
